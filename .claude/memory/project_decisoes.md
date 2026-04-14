@@ -1,0 +1,37 @@
+---
+name: Decisões de produto e arquitetura
+description: Decisões técnicas e de produto já tomadas e aprovadas para o botzap-hgvc
+type: project
+---
+
+- O bot é um **assistente conversacional** para usuários comuns — tudo via linguagem natural, sem prefixos.
+- **Admins e superadmins usam `/slash` commands** — `/adduser`, `/removeuser`, `/edituser`. O wizard guia passo a passo; estado persiste no Redis (`admin:flow:{jid}`, TTL 5 min via `AdminFlowStore`). Decisão tomada em 2026-04-08 para gestão da whitelist sem acesso ao banco.
+- **GLPI é Fase 3** — integração futura. Não criar dependências com ele no MVP.
+- **Identidade = número do WhatsApp** (`remoteJid`). Toda query filtra por `user_id`. Nunca retornar dados de um usuário para outro.
+- Dois eixos de permissão independentes: `nivel` (usuario/admin/superadmin) controla o que pode fazer; `perfil` (tecnico/analista/coordenador) contextualiza como o bot responde. Não são a mesma coisa.
+- **LLMProvider é uma interface** (`chat(messages)`). O LLM nunca é chamado diretamente — sempre via provider. Facilita migração Groq → Ollama sem alterar o restante.
+- `LLM_PROVIDER=groq|ollama|openrouter` no `.env` seleciona o provider em runtime.
+- **Docker Compose é o ambiente único** — dev e produção. Não assumir serviços rodando fora do Compose.
+- Memória persistente deve ter **criptografia em repouso** — senhas e IPs são casos de uso explícitos.
+- Todo o framework de desenvolvimento (skills, hooks, memória) fica no repositório git, não em `~/.claude/`, para funcionar em qualquer máquina.
+- **Commits têm corpo explicativo obrigatório** — além da linha técnica (Conventional Commits), todo commit precisa de 1–3 frases em linguagem simples explicando o que mudou e por quê. Decisão tomada em 2026-04-08 após perceber que o histórico era técnico demais para quem não conhece o código.
+- **Coverage thresholds são gate de review** — 85% statements, 80% branches, 90% functions configurados no `vitest.config.ts`. O `/review` só aprova se `npm run test:coverage` passar.
+- **Unhappy paths são obrigatórios** — todo módulo deve ter ao menos um teste de falha (banco cai, dep. lança, input inválido). Definido em 2026-04-08 ao evoluir o padrão de testes.
+- **ReminderScheduler é iniciado no boot** — `buildApp()` em `app.ts` cria o scheduler e chama `start()`. O hook `onClose` chama `stop()` para encerrar limpo. Implementado em 2026-04-08.
+- **`"type": "module"` é obrigatório** — o projeto usa NodeNext + top-level await + ESM. Sem `"type": "module"` no `package.json`, o tsx falha. Descoberto no smoke test (2026-04-08).
+- **Paths do tsconfig devem incluir `src/`** — `@modules/*` aponta para `./src/modules/*` (com baseUrl: "."). Os testes compensam via alias no vitest.config.ts, mas o build e o runtime precisam do tsconfig correto.
+- **ioredis usa named import `{ Redis }` no ESM** — `import Redis from 'ioredis'` (default) não funciona como classe no ESM/NodeNext. Usar `import { Redis } from 'ioredis'`.
+- **Function calling via ToolDispatcher** — o `MessageService` usa `llm.chatWithTools()` quando um `ToolDispatcher` está injetado. O LLM decide chamar uma ferramenta (lembrete, memória) ou responder em texto. O dispatcher valida todos os parâmetros antes de executar. O system prompt inclui data/hora atual para o LLM resolver "daqui 10 minutos". Implementado em 2026-04-08.
+- **`vi.resetModules()` quebra `instanceof` de erros customizados** — quando um módulo é re-importado dinamicamente após `resetModules()`, suas classes são instâncias diferentes das importadas estaticamente no topo do teste. Solução: não usar `resetModules()` em testes que não precisam de isolamento de `process.env`. Descoberto no ciclo TDD do ToolDispatcher (2026-04-08).
+- **`WhitelistNotFoundError` é subclasse dedicada de `NotFoundError`** — lançada exclusivamente por `UserService.assertWhitelisted()`. O handler captura apenas essa classe para armazenar `@lid`; erros genéricos de banco que herdam de `NotFoundError` não ativam esse caminho. Adicionado em 2026-04-09 (flow-06).
+- **`save_memory` faz upsert por `(user_id, tag)`** — índice único criado pela migration 005. Tags duplicadas não acumulam; a segunda sobrescreve a primeira. Adicionado em 2026-04-09 (flow-03).
+- **`create_reminder` aceita ISO 8601 com offset `-03:00` ou `Z`** — regex `ISO_WITH_OFFSET_RE` em `tool.reminder-memory.handlers.ts`. O system prompt instrui o LLM a usar `-03:00` (Brasília), evitando que o LLM precise fazer contas de fuso. Datas com milissegundos (`.mmmZ`) são rejeitadas. Atualizado em 2026-04-09 (recurring).
+- **`ReminderScheduler` usa `pg_try_advisory_lock`** — evita processamento concorrente quando dois ticks se sobrepõem. Se o lock não for adquirido, o tick é ignorado silenciosamente. `findPending()` faz JOIN com `users` e filtra `ativo=TRUE`, usando `users.remote_jid` em vez do snapshot salvo no lembrete. Adicionado em 2026-04-09 (flow-04).
+- **`SessionScheduler` verifica wizard admin ativo antes de expirar** — se `IFlowStore.get(jid)` retornar estado, a sessão não é encerrada e `touch()` renova o timer. `SessionService.touch()` existe para renovação explícita sem adicionar mensagem ao histórico. Adicionado em 2026-04-09 (flow-05).
+- **Tag de sessão inclui timestamp completo** — formato `sessao-YYYY-MM-DDTHH-mm-ss-sssZ` garante unicidade por expiração; evita colisão quando duas sessões expiram no mesmo minuto. Adicionado em 2026-04-09 (flow-05).
+- **Commits devem ser um por feature/flow** — nunca acumular múltiplos flows ou módulos num único commit. Ficou explícito em 2026-04-09 após mega-commit dos flows 02-06 ter sido desfeito e refeito separadamente.
+- **`RecurringScheduler` usa advisory lock 405** — `ReminderScheduler` usa 404. `recurring_fired(schedule_id, fired_date)` tem PK composta para impedir double-fire mesmo em restart do container. `time_of_day` é `TIME WITHOUT TIME ZONE` armazenado em horário de Brasília, comparado com `NOW() AT TIME ZONE 'America/Sao_Paulo'`. Adicionado em 2026-04-09 (recurring).
+- **`import type` não gera runtime import** — em TypeScript com NodeNext, `import type { Foo }` é apagado pelo compilador e não provoca import de módulo em runtime. Útil em testes: handlers que só usam `import type { RecurringService }` podem ser testados sem mockar `@infra/db`. Descoberto ao escrever testes de `tool.recurring.handlers.ts` (2026-04-09).
+- **`FUTURE_DATE` em testes de ISO 8601 não pode usar `.toISOString()`** — o método inclui milissegundos (`.mmmZ`) que a regex `ISO_WITH_OFFSET_RE` não aceita. Usar offset `-03:00` sem milissegundos: subtrair 3h do UTC, formatar manualmente. Descoberto nos testes do ToolDispatcher (2026-04-09).
+- **`UserCommands` para usuários comuns seguem o mesmo padrão de `AdminService`** — `RecurringUserCommands.tryHandle()` é chamado antes do LLM, retorna `boolean`. Estado de confirmação do `/delete` persiste via `FlowStore` próprio (injetado via ctx). Adicionado em 2026-04-09 (recurring).
+- **`users.name` é o `pushName` do WhatsApp** — campo TEXT nullable, salvo/atualizado toda vez que o webhook traz um pushName diferente do armazenado. `MessageService.handle()` recebe `pushName?` opcional e chama `users.updateName()` antes de qualquer outra lógica (erros silenciados). O system prompt inclui o nome do usuário quando disponível, com instrução para o LLM usar de forma natural. Identificação no admin exibe: `Usuário: {número} | {nome ou —} | {ativo/inativo}`. Adicionado em 2026-04-09 (migration 009).

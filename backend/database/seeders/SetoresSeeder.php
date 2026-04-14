@@ -1,0 +1,80 @@
+<?php
+
+namespace Database\Seeders;
+
+use Illuminate\Database\Seeder;
+use Illuminate\Support\Facades\DB;
+use Carbon\Carbon;
+
+class SetoresSeeder extends Seeder
+{
+    /**
+     * Run the database seeds.
+     *
+     * @return void
+     */
+    public function run()
+    {
+        $now = Carbon::now();
+
+        // Buscar ID da unidade HGVC (Todos os setores serão desta unidade)
+        $poloHGVC = DB::table('unidades')->where('nome', 'Hospital Geral')->first();
+        if (!$poloHGVC) {
+            return; // Unidade não existe ainda
+        }
+
+        // Inserir somente os 6 setores da imagem (todos no HGVC)
+        $toInsert = [
+            ['unidade_id' => $poloHGVC->id, 'nome' => 'Farmácia Central', 'descricao' => 'Farmácia Central que atende as clínicas', 'tipo' => 'Medicamento', 'estoque' => true, 'status' => 'A'],
+            ['unidade_id' => $poloHGVC->id, 'nome' => 'Farmácia de Dispensação', 'descricao' => 'Central de Abastecimento Farmacêutico', 'tipo' => 'Medicamento', 'estoque' => true, 'status' => 'A'],
+            ['unidade_id' => $poloHGVC->id, 'nome' => 'Satélite da Emergência', 'descricao' => 'Farmácia Satélite do Setor de Emergência', 'tipo' => 'Medicamento', 'estoque' => true, 'status' => 'A'],
+            ['unidade_id' => $poloHGVC->id, 'nome' => 'Centro Cirúrgico', 'descricao' => 'Centro Cirúrgico', 'tipo' => 'Medicamento', 'estoque' => false, 'status' => 'A'],
+            ['unidade_id' => $poloHGVC->id, 'nome' => 'Clínica Médica', 'descricao' => 'Clínica Médica', 'tipo' => 'Medicamento', 'estoque' => false, 'status' => 'A'],
+            ['unidade_id' => $poloHGVC->id, 'nome' => 'Emergência', 'descricao' => 'Setor de Emergência', 'tipo' => 'Medicamento', 'estoque' => false, 'status' => 'A'],
+        ];
+
+        foreach ($toInsert as $row) {
+            DB::table('setores')->updateOrInsert(
+                ['nome' => mb_strtoupper($row['nome'])],
+                [
+                    'unidade_id' => $row['unidade_id'],
+                    'descricao' => $row['descricao'],
+                    'tipo' => $row['tipo'],
+                    'estoque' => $row['estoque'],
+                    'status' => $row['status'],
+                    'created_at' => $now,
+                    'updated_at' => $now,
+                ]
+            );
+        }
+
+        // Recuperar IDs para criar relações de fornecedor
+        $farmaciaCentral = DB::table('setores')->where('nome', mb_strtoupper('Farmácia Central'))->first();
+        $farmDisp = DB::table('setores')->where('nome', mb_strtoupper('Farmácia de Dispensação'))->first();
+        $satEmerg = DB::table('setores')->where('nome', mb_strtoupper('Satélite da Emergência'))->first();
+        $centroCirc = DB::table('setores')->where('nome', mb_strtoupper('Centro Cirúrgico'))->first();
+        $clinicaMed = DB::table('setores')->where('nome', mb_strtoupper('Clínica Médica'))->first();
+        $emergencia = DB::table('setores')->where('nome', mb_strtoupper('Emergência'))->first();
+
+        // Criar relações: todos apontam para Farmácia Central como fornecedor
+        $relations = [];
+        if ($farmDisp) $relations[] = ['setor_solicitante_id' => $farmDisp->id, 'setor_fornecedor_id' => $farmaciaCentral->id];
+        if ($satEmerg) $relations[] = ['setor_solicitante_id' => $satEmerg->id, 'setor_fornecedor_id' => $farmaciaCentral->id];
+        if ($centroCirc) $relations[] = ['setor_solicitante_id' => $centroCirc->id, 'setor_fornecedor_id' => $farmaciaCentral->id];
+        if ($clinicaMed) $relations[] = ['setor_solicitante_id' => $clinicaMed->id, 'setor_fornecedor_id' => $farmaciaCentral->id];
+        if ($emergencia) $relations[] = ['setor_solicitante_id' => $emergencia->id, 'setor_fornecedor_id' => $farmaciaCentral->id];
+
+        foreach ($relations as $r) {
+            DB::table('setor_fornecedor')->updateOrInsert(
+                [
+                    'setor_solicitante_id' => $r['setor_solicitante_id'],
+                    'setor_fornecedor_id' => $r['setor_fornecedor_id'],
+                ],
+                [
+                    'created_at' => $now,
+                    'updated_at' => $now,
+                ]
+            );
+        }
+    }
+}

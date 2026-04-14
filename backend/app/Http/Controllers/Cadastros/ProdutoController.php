@@ -1,0 +1,278 @@
+<?php
+
+namespace App\Http\Controllers\Cadastros;
+
+use App\Models\Produto;
+use App\Models\GrupoProduto;
+use App\Models\UnidadeMedida;
+use App\Http\Requests\ProdutoRequest;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Log;
+
+class ProdutoController
+{
+    /**
+     * Listar todos os produtos
+     */
+    public function listAll(Request $request)
+    {
+        try {
+            $query = Produto::with(['grupoProduto', 'unidadeMedida']);
+
+            // Busca textual por nome, marca ou grupo
+            $search = $request->input('search');
+            if (!empty($search)) {
+                $query->where(function ($q) use ($search) {
+                    $q->where('nome', 'LIKE', '%' . $search . '%')
+                      ->orWhere('marca', 'LIKE', '%' . $search . '%')
+                      ->orWhereHas('grupoProduto', function ($gq) use ($search) {
+                          $gq->where('nome', 'LIKE', '%' . $search . '%');
+                      });
+                });
+            }
+
+            // Filtro por grupo_produto_id
+            $grupoProdutoId = $request->input('grupo_produto_id');
+            if (!empty($grupoProdutoId)) {
+                $query->where('grupo_produto_id', $grupoProdutoId);
+            }
+
+            // Filtro por marca
+            $marca = $request->input('marca');
+            if (!empty($marca)) {
+                $query->where('marca', $marca);
+            }
+
+            // Filtros legados (compatibilidade)
+            $filters = $request->input('filters', []);
+            foreach ($filters as $condition) {
+                if (is_array($condition)) {
+                    foreach ($condition as $column => $value) {
+                        if ($value !== null && $value !== '') {
+                            $allowedColumns = ['nome', 'marca', 'grupo_produto_id', 'unidade_medida_id', 'status'];
+                            if (in_array($column, $allowedColumns)) {
+                                if (in_array($column, ['grupo_produto_id', 'unidade_medida_id', 'status'])) {
+                                    $query->where($column, $value);
+                                } else {
+                                    $query->where($column, 'LIKE', '%' . $value . '%');
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Ordenação dinâmica
+            $sortBy = $request->input('sort_by', 'nome');
+            $sortDir = $request->input('sort_dir', 'asc');
+            
+            $allowedSortColumns = ['id', 'nome', 'marca', 'status'];
+            
+            if (in_array($sortBy, $allowedSortColumns) && in_array(strtolower($sortDir), ['asc', 'desc'])) {
+                $query->orderBy('produtos.' . $sortBy, $sortDir);
+            } elseif ($sortBy === 'grupo_produto' && in_array(strtolower($sortDir), ['asc', 'desc'])) {
+                // Ordenar pelo nome do grupo
+                $query->join('grupo_produto', 'produtos.grupo_produto_id', '=', 'grupo_produto.id')
+                      ->orderBy('grupo_produto.nome', $sortDir);
+            } elseif ($sortBy === 'unidade_medida' && in_array(strtolower($sortDir), ['asc', 'desc'])) {
+                // Ordenar pelo nome/sigla da unidade
+                $query->join('unidade_medida', 'produtos.unidade_medida_id', '=', 'unidade_medida.id')
+                      ->orderBy('unidade_medida.nome', $sortDir);
+            } else {
+                $query->orderBy('produtos.nome', 'asc');
+            }
+
+            $produtos = $query
+                ->select('produtos.id', 'produtos.nome', 'produtos.marca', 'produtos.codigo_simpras', 'produtos.codigo_barras', 'produtos.grupo_produto_id', 'produtos.unidade_medida_id', 'produtos.status')
+                ->get();
+
+            return response()->json(['status' => true, 'data' => $produtos]);
+        } catch (\Throwable $e) {
+            Log::error('Erro ao listar produtos: ' . $e->getMessage());
+            return response()->json(['status' => false, 'message' => 'Erro interno do servidor'], 500);
+        }
+    }
+
+    /**
+     * Obter dados de um produto específico
+     */
+    public function listData(Request $request)
+    {
+        try {
+            $id = $request->input('id');
+
+            if (!$id) return response()->json(['status' => false, 'message' => 'ID do produto é obrigatório'], 400);
+
+            $produto = Produto::with(['grupoProduto', 'unidadeMedida'])->find($id);
+
+            if (!$produto) return response()->json(['status' => false, 'message' => 'Produto não encontrado'], 404);
+
+            return response()->json(['status' => true, 'data' => $produto]);
+        } catch (\Throwable $e) {
+            Log::error('Erro ao buscar produto: ' . $e->getMessage());
+            return response()->json(['status' => false, 'message' => 'Erro interno do servidor'], 500);
+        }
+    }
+
+    /**
+     * Criar novo produto
+     */
+    public function add(ProdutoRequest $request)
+    {
+        try {
+            $data = $request->validated()['produto'];
+
+            $produto = new Produto();
+            $produto->nome = trim($data['nome']);
+            $produto->marca = !empty($data['marca']) ? trim($data['marca']) : null;
+            $produto->codigo_simpras = !empty($data['codigo_simpras']) ? trim($data['codigo_simpras']) : null;
+            $produto->codigo_barras = !empty($data['codigo_barras']) ? trim($data['codigo_barras']) : null;
+            $produto->grupo_produto_id = $data['grupo_produto_id'];
+            $produto->unidade_medida_id = $data['unidade_medida_id'];
+            $produto->status = $data['status'] ?? 'A';
+
+            $produto->save();
+            $produto->load(['grupoProduto', 'unidadeMedida']);
+
+            return response()->json(['status' => true, 'data' => $produto, 'message' => 'Produto cadastrado com sucesso'], 201);
+        } catch (\Throwable $e) {
+            Log::error('Erro ao criar produto: ' . $e->getMessage());
+            return response()->json(['status' => false, 'message' => 'Erro interno do servidor: ' . $e->getMessage()], 500);
+        }
+    }
+
+    /**
+     * Atualizar produto existente
+     */
+    public function update(ProdutoRequest $request)
+    {
+        try {
+            $data = $request->validated()['produto'];
+
+            $produto = Produto::find($data['id']);
+            if (!$produto) return response()->json(['status' => false, 'message' => 'Produto não encontrado'], 404);
+
+            $produto->nome = trim($data['nome']);
+            $produto->marca = !empty($data['marca']) ? trim($data['marca']) : null;
+            $produto->codigo_simpras = !empty($data['codigo_simpras']) ? trim($data['codigo_simpras']) : null;
+            $produto->codigo_barras = !empty($data['codigo_barras']) ? trim($data['codigo_barras']) : null;
+            $produto->grupo_produto_id = $data['grupo_produto_id'];
+            $produto->unidade_medida_id = $data['unidade_medida_id'];
+            $produto->status = $data['status'] ?? $produto->status;
+
+            $produto->save();
+            $produto->load(['grupoProduto', 'unidadeMedida']);
+
+            return response()->json(['status' => true, 'data' => $produto, 'message' => 'Produto atualizado com sucesso']);
+        } catch (\Throwable $e) {
+            Log::error('Erro ao atualizar produto: ' . $e->getMessage());
+            return response()->json(['status' => false, 'message' => 'Erro interno do servidor: ' . $e->getMessage()], 500);
+        }
+    }
+
+    /**
+     * Excluir produto
+     */
+    public function delete($id)
+    {
+        try {
+            $produto = Produto::find($id);
+            if (!$produto) return response()->json(['status' => false, 'message' => 'Produto não encontrado'], 404);
+
+            // Ao inativar, verificar referências
+            if ($produto->status === 'A') {
+                $references = [];
+                if ($produto->itensEntrada()->count() > 0) $references[] = 'Entradas';
+                if ($produto->itensMovimentacao()->count() > 0) $references[] = 'Movimentações';
+
+                if (!empty($references)) {
+                    return response()->json([
+                        'status' => false,
+                        'message' => 'Não é possível inativar: existem registros vinculados (' . implode(', ', $references) . ').',
+                    ], 422);
+                }
+            }
+
+            $produto->status = $produto->status === 'A' ? 'I' : 'A';
+            $produto->save();
+            $produto->load(['grupoProduto', 'unidadeMedida']);
+
+            $action = $produto->status === 'A' ? 'ativado' : 'inativado';
+            return response()->json(['status' => true, 'message' => "Produto {$action} com sucesso.", 'data' => $produto]);
+        } catch (\Throwable $e) {
+            Log::error('Erro ao alterar status do produto: ' . $e->getMessage());
+            return response()->json(['status' => false, 'message' => 'Erro interno do servidor'], 500);
+        }
+    }
+
+    /**
+     * Alterar status do produto (ativar/inativar)
+     */
+    public function toggleStatus(Request $request)
+    {
+        try {
+            $id = $request->input('id');
+
+            if (!$id) return response()->json(['status' => false, 'message' => 'ID do produto é obrigatório'], 400);
+
+            $produto = Produto::find($id);
+            if (!$produto) return response()->json(['status' => false, 'message' => 'Produto não encontrado'], 404);
+
+            $produto->status = $produto->status === 'A' ? 'I' : 'A';
+            $produto->save();
+
+            // Recarregar com relacionamentos
+            $produto->load(['grupoProduto', 'unidadeMedida']);
+
+            $statusText = $produto->status === 'A' ? 'ativado' : 'inativado';
+
+            return response()->json(['status' => true, 'data' => $produto, 'message' => "Produto {$statusText} com sucesso"]);
+        } catch (\Throwable $e) {
+            Log::error('Erro ao alterar status do produto: ' . $e->getMessage());
+            return response()->json(['status' => false, 'message' => 'Erro interno do servidor'], 500);
+        }
+    }
+
+    /**
+     * Obter dados auxiliares para o formulário (grupos e unidades)
+     */
+    public function getDadosAuxiliares(Request $request)
+    {
+        try {
+            $grupos = GrupoProduto::where('status', 'A')->select('id', 'nome')->orderBy('nome')->get();
+            $unidades = UnidadeMedida::where('status', 'A')->select('id', 'nome', 'sigla')->orderBy('nome')->get();
+
+            return response()->json(['status' => true, 'data' => ['grupos' => $grupos, 'unidades' => $unidades]]);
+        } catch (\Throwable $e) {
+            Log::error('Erro ao buscar dados auxiliares: ' . $e->getMessage());
+            return response()->json(['status' => false, 'message' => 'Erro interno do servidor'], 500);
+        }
+    }
+
+    /**
+     * Listar produtos filtrados por tipo (Medicamento/Material).
+     * Usado no formulário de movimentações para filtrar produtos pelo tipo do setor fornecedor.
+     */
+    public function listByTipo(Request $request)
+    {
+        try {
+            $tipo = $request->input('tipo');
+
+            if (!$tipo) return response()->json(['status' => false, 'message' => 'Tipo é obrigatório'], 400);
+
+            $produtos = Produto::with(['grupoProduto', 'unidadeMedida'])
+                ->whereHas('grupoProduto', function ($query) use ($tipo) {
+                    $query->where('tipo', $tipo);
+                })
+                ->where('status', 'A')
+                ->select('id', 'nome', 'marca', 'codigo_simpras', 'grupo_produto_id', 'unidade_medida_id')
+                ->orderBy('nome')
+                ->get();
+
+            return response()->json(['status' => true, 'data' => $produtos]);
+        } catch (\Throwable $e) {
+            Log::error('Erro ao listar produtos por tipo: ' . $e->getMessage());
+            return response()->json(['status' => false, 'message' => 'Erro interno do servidor'], 500);
+        }
+    }
+}

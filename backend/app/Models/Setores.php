@@ -1,0 +1,89 @@
+<?php
+
+namespace App\Models;
+
+use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\Model;
+
+class Setores extends Model
+{
+    use HasFactory;
+
+    protected $table = 'setores';
+
+    protected $fillable = [
+        'unidade_id',
+        'nome',
+        'descricao',
+        'status',
+        'estoque',
+        'tipo'
+    ];
+
+    protected $casts = [
+        'estoque' => 'boolean',
+    ];
+
+    /**
+     * Relacionamento com unidade
+     */
+    public function unidade()
+    {
+        return $this->belongsTo(Unidade::class, 'unidade_id');
+    }
+
+    /**
+     * Compatibilidade legada: alias para `unidade()`.
+     * Alguns trechos do código e controladores antigos ainda chamam ->polo.
+     * Mantemos este alias para evitar erros 500 enquanto o código for migrado.
+     */
+    public function polo()
+    {
+        return $this->unidade();
+    }
+
+    /**
+     * Obter produtos disponíveis para este setor baseado no tipo
+     */
+    public function produtosDisponiveis()
+    {
+        return Produto::whereHas('grupoProduto', function ($query) {
+            $query->where('tipo', $this->tipo);
+        });
+    }
+
+    /**
+     * Obter grupos de produtos compatíveis com este setor
+     */
+    public function gruposCompatíveis()
+    {
+        return GrupoProduto::where('tipo', $this->tipo)->where('status', 'A');
+    }
+
+    /**
+     * Relacionamento com estoque
+     */
+    public function estoques()
+    {
+        return $this->hasMany(Estoque::class, 'unidade_id');
+    }
+
+    /**
+     * Relacionamento com usuários
+     */
+    public function usuarios()
+    {
+        // Relacionamento many-to-many via tabela pivot 'usuario_setor' (contém 'perfil')
+        return $this->belongsToMany(User::class, 'usuario_setor', 'setor_id', 'usuario_id')
+            ->withPivot('perfil')
+            ->withTimestamps();
+    }
+
+    /**
+     * Fornecedores relacionados a este setor (como solicitante)
+     */
+    public function fornecedoresRelacionados()
+    {
+        return $this->hasMany(SetorFornecedor::class, 'setor_solicitante_id');
+    }
+}

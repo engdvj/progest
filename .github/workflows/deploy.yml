@@ -55,7 +55,7 @@ jobs:
           push: true
           tags: ghcr.io/${{ env.OWNER }}/progest-web:latest
           build-args: |
-            VITE_API_URL=http://10.17.133.34
+            VITE_API_URL=http://10.17.133.34/api
           cache-from: type=gha,scope=web
           cache-to: type=gha,scope=web,mode=max
 

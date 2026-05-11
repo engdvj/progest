@@ -18,8 +18,8 @@ class CreateDefaultAdminUser extends Migration
     {
         DB::table('users')->insert([
             'name' => 'ADMIN',
-            'email' => 'admin@admin.com',
-            'password' => bcrypt('admin'),
+            'email' => 'admin@progest.com',
+            'password' => bcrypt('admin123'),
             'telefone' => '00000000000',
             'data_nascimento' => '1990-01-01',
             'cpf' => '00000000000',
@@ -37,6 +37,6 @@ class CreateDefaultAdminUser extends Migration
      */
     public function down()
     {
-        DB::table('users')->where('email', 'admin@admin.com')->delete();
+        DB::table('users')->where('email', 'admin@progest.com')->delete();
     }
 }

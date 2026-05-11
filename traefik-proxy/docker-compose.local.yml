@@ -1,0 +1,23 @@
+services:
+  traefik:
+    image: traefik:v2.11
+    container_name: traefik
+    ports:
+      - "80:80" # HTTP
+      - "8080:8080" # Dashboard
+    command:
+      - "--api.insecure=true"
+      - "--providers.docker=true"
+      - "--providers.docker.exposedbydefault=false"
+      - "--providers.docker.network=traefik-public"
+      # Entry points
+      - "--entrypoints.web.address=:80"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    networks:
+      - traefik-public
+    restart: unless-stopped
+
+networks:
+  traefik-public:
+    external: true

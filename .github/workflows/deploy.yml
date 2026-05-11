@@ -87,6 +87,11 @@ jobs:
 
           docker compose -f docker-compose.vm.yml up -d --no-build api web
 
+          echo "Aguardando API ficar pronta..."
+          until docker compose -f docker-compose.vm.yml exec -T api php artisan --version > /dev/null 2>&1; do
+            sleep 3
+          done
+
           docker compose -f docker-compose.vm.yml exec -T api php artisan migrate --force
 
           docker image prune -f

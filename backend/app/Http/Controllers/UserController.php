@@ -180,7 +180,7 @@ class UserController extends Controller
         if (!$user) {
             return response()->json(['status' => false, 'message' => 'Usuário não encontrado.'], 404);
         }
-        if ($user->email === 'admin@admin.com') {
+        if ($user->isSuperAdmin()) {
             return response()->json(['status' => false, 'message' => 'O usuário Admin não pode ser alterado.'], 403);
         }
 
@@ -204,9 +204,27 @@ class UserController extends Controller
      */
     private function syncSetores(User $user, array $data)
     {
+        $hasIncoming = array_key_exists('Setores_ids', $data) || array_key_exists('Setores', $data);
         $incoming = $data['Setores_ids'] ?? $data['Setores'] ?? [];
-        if (empty($incoming) && isset($data['user']) && is_array($data['user'])) {
-            $incoming = $data['user']['Setores_ids'] ?? $data['user']['Setores'] ?? [];
+
+        if (isset($data['user']) && is_array($data['user'])) {
+            $hasIncoming = $hasIncoming
+                || array_key_exists('Setores_ids', $data['user'])
+                || array_key_exists('Setores', $data['user'])
+                || array_key_exists('setores', $data['user']);
+            $incoming = $data['user']['Setores_ids']
+                ?? $data['user']['Setores']
+                ?? $data['user']['setores']
+                ?? $incoming;
+        }
+
+        if (!$hasIncoming) {
+            return;
+        }
+
+        if (!is_array($incoming) || empty($incoming)) {
+            $user->setores()->sync([]);
+            return;
         }
 
         if (is_array($incoming) && !empty($incoming)) {

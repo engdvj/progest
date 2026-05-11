@@ -13,6 +13,15 @@ class User extends Authenticatable
 {
     use HasApiTokens, HasFactory, Notifiable;
 
+    public const SUPER_ADMIN_EMAILS = [
+        'admin@admin.com',
+        'admin@progest.com',
+    ];
+
+    protected $appends = [
+        'is_admin',
+    ];
+
     /**
      * The attributes that are mass assignable.
      *
@@ -75,7 +84,7 @@ class User extends Authenticatable
     {
         parent::boot();
         static::deleting(function ($user) {
-            if ($user->email === 'admin@admin.com') {
+            if ($user->isSuperAdmin()) {
                 throw new \Exception('O usuário Admin não pode ser excluído.');
             }
         });
@@ -87,6 +96,14 @@ class User extends Authenticatable
      */
     public function isSuperAdmin(): bool
     {
-        return isset($this->email) && mb_strtolower($this->email) === 'admin@admin.com';
+        $email = isset($this->email) ? mb_strtolower($this->email) : '';
+
+        return in_array($email, self::SUPER_ADMIN_EMAILS, true)
+            || mb_strtolower((string) $this->getAttribute('usuario_tipo')) === 'admin';
+    }
+
+    public function getIsAdminAttribute(): bool
+    {
+        return $this->isSuperAdmin();
     }
 }

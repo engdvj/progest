@@ -43,7 +43,10 @@ class UserRequest extends BaseFormRequest
                 'regex:/[a-z]/',     // minúscula
                 'regex:/[A-Z]/',     // maiúscula
                 'regex:/[0-9]/'     // número
-            ]
+            ],
+            'user.Setores_ids' => ($isUpdate ? 'nullable' : 'required_unless:user.email,admin@admin.com,admin@progest.com') . '|array|min:1',
+            'user.Setores_ids.*.id' => 'required_with:user.Setores_ids|integer|exists:setores,id',
+            'user.Setores_ids.*.perfil' => 'nullable|string|in:admin,almoxarife,solicitante',
         ];
     }
 

@@ -76,22 +76,29 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Pull and restart containers
+      - name: Deploy
         env:
           REPO_OWNER: ${{ github.repository_owner }}
           APP_DOMAIN: 10.17.133.34
         run: |
           set -e
 
+          # Derruba tudo para garantir redes limpas
+          docker compose -f docker-compose.vm.yml down --remove-orphans
+
+          # Puxa imagens novas do GHCR
           docker compose -f docker-compose.vm.yml pull api web
 
-          docker compose -f docker-compose.vm.yml up -d --no-build traefik api web
+          # Sobe todos os serviços juntos (traefik, mysql, api, web)
+          docker compose -f docker-compose.vm.yml up -d
 
+          # Aguarda API responder
           echo "Aguardando API ficar pronta..."
           until docker compose -f docker-compose.vm.yml exec -T api php artisan --version > /dev/null 2>&1; do
             sleep 3
           done
 
+          # Roda migrations
           docker compose -f docker-compose.vm.yml exec -T api php artisan migrate --force
 
           docker image prune -f

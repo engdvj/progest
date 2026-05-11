@@ -46,7 +46,7 @@ class UserController extends Controller
 
         // Retorna o usuário com os relacionamentos, igual ao código original
         $user = User::with(['Setores' => function ($q) {
-            $q->select('Setores.id', 'Setores.unidade_id', 'Setores.nome', 'Setores.descricao', 'Setores.status', 'Setores.estoque', 'Setores.tipo');
+            $q->select('setores.id', 'setores.unidade_id', 'setores.nome', 'setores.descricao', 'setores.status', 'setores.estoque', 'setores.tipo');
         }])->find($user->id);
 
         return response()->json(['status' => true, 'data' => $user]);
@@ -90,7 +90,7 @@ class UserController extends Controller
         }
 
         $user = User::with(['Setores' => function ($q) {
-            $q->select('Setores.id', 'Setores.unidade_id', 'Setores.nome', 'Setores.descricao', 'Setores.status', 'Setores.estoque', 'Setores.tipo');
+            $q->select('setores.id', 'setores.unidade_id', 'setores.nome', 'setores.descricao', 'setores.status', 'setores.estoque', 'setores.tipo');
         }])->find($user->id);
 
         return response()->json(['status' => true, 'data' => $user]);
@@ -157,7 +157,7 @@ class UserController extends Controller
     public function listData(Request $request)
     {
         $user = User::with(['Setores' => function ($q) {
-            $q->select('Setores.id', 'Setores.unidade_id', 'Setores.nome', 'Setores.descricao', 'Setores.status', 'Setores.estoque', 'Setores.tipo');
+            $q->select('setores.id', 'setores.unidade_id', 'setores.nome', 'setores.descricao', 'setores.status', 'setores.estoque', 'setores.tipo');
         }])->find($request->id);
 
         if (!$user) {

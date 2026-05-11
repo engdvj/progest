@@ -11,6 +11,15 @@ var ADD_UP = (content, funcao) => {
   delete rawUserData.setores;
   delete rawUserData.unidades;
 
+  // Evita criar usuários "sem porta de entrada": ao cadastrar a partir de um
+  // setor já selecionado no sistema, vincula o novo usuário a esse setor por padrão.
+  if (funcao == "ADD" && !rawUserData.Setores_ids?.length) {
+    const setorAtualId = content.$store?.state?.setorAtualId;
+    if (setorAtualId) {
+      rawUserData.Setores_ids = [{ id: setorAtualId, perfil: "solicitante" }];
+    }
+  }
+
   content.$axios
     .post(
       funcao == "ADD" ? "/user/add" : "/user/update",

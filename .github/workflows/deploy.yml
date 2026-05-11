@@ -98,8 +98,9 @@ jobs:
             sleep 3
           done
 
-          # Roda migrations
+          # Roda migrations e garante usuário admin
           docker compose -f docker-compose.vm.yml exec -T api php artisan migrate --force
+          docker compose -f docker-compose.vm.yml exec -T api php artisan db:seed --class=AdminUserSeeder --force
 
           docker image prune -f
 

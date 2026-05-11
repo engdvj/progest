@@ -1,0 +1,94 @@
+name: Deploy to Production
+
+on:
+  push:
+    branches:
+      - production
+
+env:
+  REGISTRY: ghcr.io
+  OWNER: ${{ github.repository_owner }}
+
+jobs:
+  build-and-push:
+    name: Build & Push Images
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+
+    outputs:
+      api_digest: ${{ steps.build-api.outputs.digest }}
+      web_digest: ${{ steps.build-web.outputs.digest }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build and push API image
+        id: build-api
+        uses: docker/build-push-action@v6
+        with:
+          context: ./backend
+          file: ./backend/Dockerfile
+          push: true
+          tags: ghcr.io/${{ env.OWNER }}/progest-api:latest
+          cache-from: type=gha,scope=api
+          cache-to: type=gha,scope=api,mode=max
+
+      - name: Build and push Web image
+        id: build-web
+        uses: docker/build-push-action@v6
+        with:
+          context: ./frontend
+          file: ./frontend/Dockerfile
+          push: true
+          tags: ghcr.io/${{ env.OWNER }}/progest-web:latest
+          build-args: |
+            VITE_API_URL=/api
+          cache-from: type=gha,scope=web
+          cache-to: type=gha,scope=web,mode=max
+
+  deploy:
+    name: Deploy to VM
+    runs-on: self-hosted
+    needs: build-and-push
+    environment: production
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Pull and restart containers
+        env:
+          REPO_OWNER: ${{ github.repository_owner }}
+          APP_DOMAIN: 10.17.133.20
+        run: |
+          set -e
+
+          docker compose -f docker-compose.vm.yml pull api web
+
+          docker compose -f docker-compose.vm.yml up -d --no-build api web
+
+          docker compose -f docker-compose.vm.yml exec -T api php artisan migrate --force
+
+          docker image prune -f
+
+          echo "Deploy concluído em $(date)"

@@ -1,0 +1,71 @@
+services:
+  traefik:
+    image: traefik:v2.11
+    command:
+      - "--api.insecure=true"
+      - "--providers.docker=true"
+      - "--providers.docker.exposedbydefault=false"
+      - "--entrypoints.web.address=:80"
+    ports:
+      - "80:80"
+      - "8080:8080"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    networks:
+      - traefik-public
+    restart: unless-stopped
+
+  mysql:
+    image: mysql:8.0
+    command: --log-bin-trust-function-creators=1
+    environment:
+      MYSQL_DATABASE: progest
+      MYSQL_USER: progest
+      MYSQL_PASSWORD: ${DB_PASSWORD:-progest_secret}
+      MYSQL_ROOT_PASSWORD: ${DB_ROOT_PASSWORD:-root_secret}
+    volumes:
+      - mysql_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    networks:
+      - progest-network
+    restart: unless-stopped
+
+  api:
+    image: ghcr.io/${REPO_OWNER}/progest-api:latest
+    env_file:
+      - /home/admin/.env.production
+    depends_on:
+      mysql:
+        condition: service_healthy
+    networks:
+      - progest-network
+      - traefik-public
+    restart: unless-stopped
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.progest-api.rule=Host(`${APP_DOMAIN}`) && PathPrefix(`/api`)"
+      - "traefik.http.routers.progest-api.entrypoints=web"
+      - "traefik.http.services.progest-api.loadbalancer.server.port=80"
+
+  web:
+    image: ghcr.io/${REPO_OWNER}/progest-web:latest
+    networks:
+      - traefik-public
+    restart: unless-stopped
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.progest-web.rule=Host(`${APP_DOMAIN}`)"
+      - "traefik.http.routers.progest-web.entrypoints=web"
+      - "traefik.http.services.progest-web.loadbalancer.server.port=80"
+
+volumes:
+  mysql_data:
+
+networks:
+  progest-network: {}
+  traefik-public: {}

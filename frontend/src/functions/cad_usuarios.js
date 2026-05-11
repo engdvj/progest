@@ -1,18 +1,36 @@
 import { feedback } from "@/components/ui/feedback-modal";
 
 var ADD_UP = (content, funcao) => {
-  // Construir payload do usuário removendo campos de vinculação a setores/unidades
+  // Construir payload do usuário preservando os vinculos de setores.
   const rawUserData =
     funcao == "ADD" || funcao == "UP"
       ? { ...content.modalData }
       : { ...content.user_data };
-  // Remover campos relacionados a Setores/Unidades — vinculação será gerenciada por outro módulo
+
+  if (Array.isArray(rawUserData.Setores_ids)) {
+    rawUserData.Setores_ids = rawUserData.Setores_ids
+      .map((item) => ({
+        id: item.id || item.setor_id,
+        perfil: item.perfil || "solicitante",
+      }))
+      .filter((item) => item.id);
+  }
+
+  const isSuperAdminEmail = ["admin@admin.com", "admin@progest.com"].includes(
+    rawUserData.email?.toString().toLowerCase()
+  );
+
+  if (isSuperAdminEmail && rawUserData.Setores_ids?.length === 0) {
+    delete rawUserData.Setores_ids;
+  }
+
+  // Remover objetos carregados apenas para exibicao no modal.
   delete rawUserData.Setores;
   delete rawUserData.setores;
   delete rawUserData.unidades;
 
-  // Evita criar usuários "sem porta de entrada": ao cadastrar a partir de um
-  // setor já selecionado no sistema, vincula o novo usuário a esse setor por padrão.
+  // Evita criar usuarios "sem porta de entrada": ao cadastrar a partir de um
+  // setor ja selecionado no sistema, vincula o novo usuario a esse setor por padrao.
   if (funcao == "ADD" && !rawUserData.Setores_ids?.length) {
     const setorAtualId = content.$store?.state?.setorAtualId;
     if (setorAtualId) {
@@ -165,10 +183,24 @@ var listData = (content) => {
       }
     )
     .then((response) => {
-      // Ao popular o modal, remover os vínculos a Setores/Unidades — estes serão gerenciados por outro módulo
       const modalPayload = { ...response.data.data };
-      delete modalPayload.Setores;
-      delete modalPayload.setores;
+      const setoresPayload =
+        response.data.Setores ||
+        response.data.setores ||
+        response.data.data?.Setores ||
+        response.data.data?.setores ||
+        [];
+
+      modalPayload.Setores_ids = (setoresPayload || [])
+        .map((setor) => ({
+          id: setor.id || setor.setor_id,
+          setor_id: setor.id || setor.setor_id,
+          nome: setor.nome,
+          unidade: setor.unidade,
+          perfil: setor.pivot?.perfil || setor.perfil || "solicitante",
+        }))
+        .filter((setor) => setor.id);
+
       delete modalPayload.unidades;
 
       content.$store.commit("setIdDataLoaded", content.idData);

@@ -271,7 +271,13 @@ const emit = defineEmits(["toggle"]);
 // Verificar se o usuário é admin@admin.com
 const isAdminUser = computed(() => {
   const user = store.state.user;
-  return user && user.email === "admin@admin.com";
+  return (
+    user &&
+    (["admin@admin.com", "admin@progest.com"].includes(
+      user.email?.toLowerCase(),
+    ) ||
+      user.is_admin)
+  );
 });
 
 // Verificar se o setor atual tem um setor fornecedor (não é raiz/fornecedor/distribuidor)

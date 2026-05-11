@@ -62,7 +62,13 @@ const loadingAdd = ref(false);
 
 const isAdminUser = computed(() => {
   const user = store.state.user;
-  return user && (user.email === "admin@admin.com" || user.is_admin);
+  return (
+    user &&
+    (["admin@admin.com", "admin@progest.com"].includes(
+      user.email?.toLowerCase(),
+    ) ||
+      user.is_admin)
+  );
 });
 
 const isSolicitante = computed(() => {

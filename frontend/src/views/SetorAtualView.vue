@@ -83,7 +83,7 @@ provide("setorAtualContext", context);
 const isAdminUser = computed(() => {
   const user = store.state.user;
   if (!user) return false;
-  if (user.email?.toLowerCase() === "admin@admin.com") return true;
+  if (["admin@admin.com", "admin@progest.com"].includes(user.email?.toLowerCase())) return true;
 
   const list = usuariosItems.value || [];
   const found = list.find((u) => {

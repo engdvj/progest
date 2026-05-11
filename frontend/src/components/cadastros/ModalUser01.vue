@@ -13,6 +13,7 @@ import {
 } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
 import Funcoes from "@/functions/cad_usuarios.js";
+import { listarSetores } from "@/functions/cad_setores.js";
 
 const props = defineProps(["idModal", "functions"]);
 const store = useStore();
@@ -28,6 +29,7 @@ const localData = ref({
   telefone: "",
   data_nascimento: "",
   password: "",
+  Setores_ids: [],
 });
 
 const modalDataStore = computed(() => store.state.modalData.modalData);
@@ -42,11 +44,85 @@ const isModalOpen = computed({
 
 // Erros de validação vindos do backend (normalizados pelo interceptor)
 const modalErrors = computed(() => store.state.modalErrors || {});
+const setoresOptions = ref([]);
+const loadingSetores = ref(false);
 
 // Função auxiliar para verificar se um campo tem erro
 const hasError = (campo) => !!modalErrors.value[campo];
 const getError = (campo) =>
   modalErrors.value[campo] ? modalErrors.value[campo][0] : "";
+const isSuperAdminEmail = (email) =>
+  ["admin@admin.com", "admin@progest.com"].includes(
+    email?.toString().toLowerCase(),
+  );
+
+const isSuperAdminUsuario = computed(
+  () => isSuperAdminEmail(localData.value.email) || !!localData.value.is_admin,
+);
+
+const normalizeSetoresVinculados = (setores = []) =>
+  (Array.isArray(setores) ? setores : [])
+    .map((setor) => ({
+      id: String(setor.id || setor.setor_id),
+      perfil: setor.perfil || setor.pivot?.perfil || "solicitante",
+    }))
+    .filter(
+      (setor) => setor.id && setor.id !== "undefined" && setor.id !== "null",
+    );
+
+const normalizeSetoresList = (payload) => {
+  const data = payload?.data?.data || payload?.data || payload || [];
+  return (Array.isArray(data) ? data : []).filter(
+    (setor) => setor.status !== "I",
+  );
+};
+
+const isSetorSelected = (setorId) =>
+  (localData.value.Setores_ids || []).some(
+    (item) => String(item.id) === String(setorId),
+  );
+
+const toggleSetor = (setorId) => {
+  const id = String(setorId);
+  const current = [...(localData.value.Setores_ids || [])];
+  const index = current.findIndex((item) => String(item.id) === id);
+
+  if (index >= 0) current.splice(index, 1);
+  else current.push({ id, perfil: "solicitante" });
+
+  localData.value.Setores_ids = current;
+};
+
+const getSetorPerfil = (setorId) => {
+  const item = (localData.value.Setores_ids || []).find(
+    (setor) => String(setor.id) === String(setorId),
+  );
+  return item?.perfil || "solicitante";
+};
+
+const setSetorPerfil = (setorId, perfil) => {
+  const id = String(setorId);
+  const current = [...(localData.value.Setores_ids || [])];
+  const index = current.findIndex((item) => String(item.id) === id);
+
+  if (index >= 0) current[index] = { ...current[index], perfil };
+  else current.push({ id, perfil });
+
+  localData.value.Setores_ids = current;
+};
+
+const loadSetores = async () => {
+  loadingSetores.value = true;
+  try {
+    const response = await listarSetores(null, false, proxy.$axios);
+    setoresOptions.value = normalizeSetoresList(response.data || response);
+  } catch (e) {
+    console.warn("Erro ao carregar setores:", e);
+    setoresOptions.value = [];
+  } finally {
+    loadingSetores.value = false;
+  }
+};
 
 watch(
   modalDataStore,
@@ -54,6 +130,12 @@ watch(
     if (newValue) {
       localData.value = JSON.parse(JSON.stringify(newValue));
       if (!localData.value.status) localData.value.status = "A";
+      localData.value.Setores_ids = normalizeSetoresVinculados(
+        localData.value.Setores_ids ||
+          localData.value.Setores ||
+          localData.value.setores ||
+          [],
+      );
       // Converter tipo_vinculo para string (o Select usa :value="tipo.id.toString()")
       if (localData.value.tipo_vinculo != null) {
         localData.value.tipo_vinculo = String(localData.value.tipo_vinculo);
@@ -69,6 +151,12 @@ onMounted(() => {
       console.warn("Erro ao carregar tipos de vínculo:", e);
     },
   );
+});
+
+watch(isModalOpen, (open) => {
+  if (open && setoresOptions.value.length === 0 && !loadingSetores.value) {
+    loadSetores();
+  }
 });
 
 const handleSave = () => {
@@ -90,11 +178,19 @@ const handleSave = () => {
     return;
   }
 
+  if (!isSuperAdminUsuario.value && !localData.value.Setores_ids?.length) {
+    proxy.$toastr?.e("Selecione ao menos um setor para o usuario");
+    return;
+  }
+
   const content = {
     $axios: proxy.$axios,
     $store: store,
     $toastr: proxy.$toastr,
-    modalData: localData.value,
+    modalData: {
+      ...localData.value,
+      Setores_ids: normalizeSetoresVinculados(localData.value.Setores_ids),
+    },
     // Callback chamado após salvar com sucesso — fecha o modal
     onSuccess: () => {
       store.commit("setModalOpen", false);
@@ -230,6 +326,74 @@ const handleSave = () => {
       </div>
 
       <div class="space-y-2 md:col-span-2">
+        <div class="flex items-center justify-between gap-3">
+          <Label>
+            Setores de acesso
+            <span v-if="!isSuperAdminUsuario" class="text-destructive">*</span>
+          </Label>
+          <span class="text-[11px] text-muted-foreground">
+            {{ localData.Setores_ids?.length || 0 }} selecionado(s)
+          </span>
+        </div>
+        <div
+          class="max-h-56 overflow-y-auto rounded-md border border-input bg-background"
+          :class="{ 'border-red-500': hasError('Setores_ids') }"
+        >
+          <div
+            v-if="loadingSetores"
+            class="px-3 py-4 text-sm text-muted-foreground"
+          >
+            Carregando setores...
+          </div>
+          <div
+            v-else-if="setoresOptions.length === 0"
+            class="px-3 py-4 text-sm text-muted-foreground"
+          >
+            Nenhum setor ativo encontrado.
+          </div>
+          <template v-else>
+            <div
+              v-for="setor in setoresOptions"
+              :key="setor.id"
+              class="flex items-center gap-3 border-b border-border px-3 py-2 last:border-b-0"
+            >
+              <input
+                type="checkbox"
+                class="h-4 w-4 shrink-0"
+                :checked="isSetorSelected(setor.id)"
+                @change="toggleSetor(setor.id)"
+              />
+              <div class="min-w-0 flex-1">
+                <div class="truncate text-sm font-medium text-foreground">
+                  {{ setor.nome }}
+                </div>
+                <div class="truncate text-[11px] text-muted-foreground">
+                  {{ setor.unidade?.nome || "Sem unidade informada" }}
+                </div>
+              </div>
+              <Select
+                :model-value="getSetorPerfil(setor.id)"
+                :disabled="!isSetorSelected(setor.id)"
+                @update:model-value="(value) => setSetorPerfil(setor.id, value)"
+              >
+                <SelectTrigger class="h-9 w-[140px]">
+                  <SelectValue placeholder="Perfil" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="admin">Admin</SelectItem>
+                  <SelectItem value="almoxarife">Almoxarife</SelectItem>
+                  <SelectItem value="solicitante">Solicitante</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </template>
+        </div>
+        <p v-if="hasError('Setores_ids')" class="text-xs text-destructive mt-1">
+          {{ getError("Setores_ids") }}
+        </p>
+      </div>
+
+      <div class="space-y-2 md:col-span-2">
         <Label for="password"
           >Senha
           <span v-if="modalFunction === 'ADD'" class="text-destructive"
@@ -263,4 +427,3 @@ const handleSave = () => {
     </template>
   </CadastroDialog>
 </template>
-

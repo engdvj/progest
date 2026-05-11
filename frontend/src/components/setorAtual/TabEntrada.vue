@@ -25,7 +25,7 @@ const props = defineProps({
 const store = useStore();
 const user = computed(() => store.state.user || {});
 const isAdmin = computed(() => {
-  if (user.value.email === "admin@admin.com") return true;
+  if (["admin@admin.com", "admin@progest.com"].includes(user.value.email?.toLowerCase())) return true;
   return !!user.value.is_admin;
 });
 const parentData = inject("setorAtualData", {

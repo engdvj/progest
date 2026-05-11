@@ -38,6 +38,7 @@ const varsModalData = {
   data_nascimento: "",
   tipo_vinculo: "",
   password: "",
+  Setores_ids: [],
 };
 
 const columns = [
@@ -253,7 +254,7 @@ onMounted(listAllUsers);
             <!-- Status Column -->
             <template #cell-status="{ item }">
               <Badge
-                :variant="item.status === 'Ativo' || 'A' ? 'default' : 'destructive'"
+                :variant="item.status === 'Ativo' || item.status === 'A' ? 'default' : 'destructive'"
                 class="font-black px-4 py-1.5 text-[10px] uppercase tracking-widest rounded-full"
               >
                 {{ item.status }}

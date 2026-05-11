@@ -5,6 +5,10 @@ on:
     branches:
       - production
 
+concurrency:
+  group: production-deploy
+  cancel-in-progress: true
+
 env:
   REGISTRY: ghcr.io
   OWNER: ${{ github.repository_owner }}

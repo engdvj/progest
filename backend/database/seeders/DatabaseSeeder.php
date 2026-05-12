@@ -15,6 +15,7 @@ class DatabaseSeeder extends Seeder
     {
         // Seeders de dados iniciais
         $this->call([
+            TipoVinculoSeeder::class,
             UnidadesSeeder::class,
             SetoresSeeder::class,
             UnidadeMedidaSeeder::class,

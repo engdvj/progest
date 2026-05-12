@@ -60,6 +60,32 @@ const isSuperAdminUsuario = computed(
   () => isSuperAdminEmail(localData.value.email) || !!localData.value.is_admin,
 );
 
+const isValidCpf = (cpf) => {
+  const digits = (cpf || "").replace(/\D/g, "");
+
+  if (digits.length !== 11 || /^(\d)\1{10}$/.test(digits)) return false;
+
+  const calculateDigit = (base, factor) => {
+    let total = 0;
+    for (let i = 0; i < base.length; i++) {
+      total += Number(base[i]) * (factor - i);
+    }
+    const remainder = total % 11;
+    return remainder < 2 ? 0 : 11 - remainder;
+  };
+
+  const firstDigit = calculateDigit(digits.slice(0, 9), 10);
+  const secondDigit = calculateDigit(digits.slice(0, 10), 11);
+
+  return Number(digits[9]) === firstDigit && Number(digits[10]) === secondDigit;
+};
+
+const hasStrongPassword = (password) =>
+  /[a-z]/.test(password || "") &&
+  /[A-Z]/.test(password || "") &&
+  /[0-9]/.test(password || "") &&
+  (password || "").length >= 8;
+
 const normalizeSetoresVinculados = (setores = []) =>
   (Array.isArray(setores) ? setores : [])
     .map((setor) => ({
@@ -167,7 +193,8 @@ const handleSave = () => {
     !localData.value.name ||
     !localData.value.email ||
     !localData.value.cpf ||
-    !localData.value.tipo_vinculo
+    !localData.value.tipo_vinculo ||
+    !localData.value.data_nascimento
   ) {
     proxy.$toastr?.e("Por favor, preencha todos os campos obrigatórios (*)");
     return;
@@ -175,6 +202,27 @@ const handleSave = () => {
 
   if (modalFunction.value === "ADD" && !localData.value.password) {
     proxy.$toastr?.e("Senha é obrigatória para novos usuários");
+    return;
+  }
+
+  if (
+    modalFunction.value === "ADD" &&
+    !hasStrongPassword(localData.value.password)
+  ) {
+    store.commit("setModalErrors", {
+      password: [
+        "A senha deve ter no mínimo 8 caracteres, uma letra maiúscula, uma minúscula e um número.",
+      ],
+    });
+    proxy.$toastr?.e("A senha deve ter maiúscula, minúscula e número.");
+    return;
+  }
+
+  if (!isValidCpf(localData.value.cpf)) {
+    store.commit("setModalErrors", {
+      cpf: ["O CPF informado não é válido."],
+    });
+    proxy.$toastr?.e("O CPF informado não é válido.");
     return;
   }
 
@@ -310,7 +358,9 @@ const handleSave = () => {
       </div>
 
       <div class="space-y-2">
-        <Label for="nascimento">Data de Nascimento</Label>
+        <Label for="nascimento"
+          >Data de Nascimento <span class="text-destructive">*</span></Label
+        >
         <Input
           id="nascimento"
           type="date"
